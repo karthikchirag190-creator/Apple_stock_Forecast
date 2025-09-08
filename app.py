@@ -19,6 +19,9 @@ st.title('Apple Stock Price Prediction')
 # Option for user input: CSV upload or manual input
 input_option = st.radio("Choose input method:", ('Upload CSV', 'Manual Input'))
 
+# Define the features to be used for the model
+features_to_use = ['High', 'Low', 'Adj Close', 'Volume']
+
 if input_option == 'Upload CSV':
     uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
     if uploaded_file is not None:
@@ -34,12 +37,12 @@ if input_option == 'Upload CSV':
         # Preprocess the input data
         try:
             # Apply the same preprocessing steps as during training
-            # Select only the columns used for training (excluding 'Date')
-            input_features = input_df[['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']]
+            # Select only the columns used for training
+            input_features = input_df[features_to_use]
 
             # Scale the input features
             input_scaled = feature_scaler.transform(input_features)
-            input_scaled_df = pd.DataFrame(input_scaled, columns=input_features.columns, index=input_df.index)
+            input_scaled_df = pd.DataFrame(input_scaled, columns=features_to_use, index=input_df.index)
 
             # Prepare data for prediction (using the last 20 days as the window)
             window_size = 20
@@ -81,10 +84,11 @@ elif input_option == 'Manual Input':
     st.write("Enter the stock data for the day you want to predict:")
 
     input_data = {}
-    columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+    # Use only the selected features for manual input
+    manual_input_columns = features_to_use
 
     date_input = st.date_input("Date")
-    for col in columns:
+    for col in manual_input_columns:
         input_data[col] = st.number_input(f'{col}', value=0.0)
 
     if st.button('Predict'):
@@ -96,26 +100,30 @@ elif input_option == 'Manual Input':
             manual_input_df = manual_input_df.astype(float)
 
             # We need a window of 20 days for prediction.
-            # Since the user only provides one day, we will use the last 19 days from the training data
+            # Since the user only provides one day, we will use the last 19 days from the original data
             # and the manually entered day as the 20th day.
             window_size = 20
-            # Load the original training data to get the last 19 days
+            # Load the original data to get the last 19 days
             df_original = pd.read_csv('/content/AAPL.csv')
             df_original['Date'] = pd.to_datetime(df_original['Date'])
             df_original.set_index('Date', inplace=True)
 
+            # Select only the required features from the original data
+            df_original_features = df_original[features_to_use]
+
             # Get the last 19 days of the original data before the manual input date
-            last_19_days = df_original.loc[:date_input].tail(window_size - 1)
+            last_19_days = df_original_features.loc[:date_input].tail(window_size - 1)
 
             # Combine the last 19 days with the manual input day
             combined_df = pd.concat([last_19_days, manual_input_df])
 
             # Ensure the combined dataframe has the correct columns and order
-            combined_df = combined_df[['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']]
+            combined_df = combined_df[features_to_use]
+
 
             # Scale the combined data
             combined_scaled = feature_scaler.transform(combined_df)
-            combined_scaled_df = pd.DataFrame(combined_scaled, columns=combined_df.columns, index=combined_df.index)
+            combined_scaled_df = pd.DataFrame(combined_scaled, columns=features_to_use, index=combined_df.index)
 
             # Prepare data for prediction
             X_predict_manual = np.array([combined_scaled_df.values]) # Reshape for the model
