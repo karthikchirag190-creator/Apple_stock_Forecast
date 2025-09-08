@@ -21,6 +21,7 @@ input_option = st.radio("Choose input method:", ('Upload CSV', 'Manual Input'))
 
 # Define the features to be used for the model
 features_to_use = ['High', 'Low', 'Adj Close', 'Volume']
+window_size = 20 # Define window_size here
 
 if input_option == 'Upload CSV':
     uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
@@ -45,7 +46,7 @@ if input_option == 'Upload CSV':
             input_scaled_df = pd.DataFrame(input_scaled, columns=features_to_use, index=input_df.index)
 
             # Prepare data for prediction (using the last 20 days as the window)
-            window_size = 20
+
             if len(input_scaled_df) < window_size:
                 st.warning(f"Please provide at least {window_size} days of data for prediction.")
             else:
@@ -81,52 +82,38 @@ if input_option == 'Upload CSV':
             st.error(f"An error occurred during processing: {e}")
 
 elif input_option == 'Manual Input':
-    st.write("Enter the stock data for the day you want to predict:")
+    st.write(f"Enter the stock data for the last {window_size} days for prediction:")
 
     input_data = {}
     # Use only the selected features for manual input
     manual_input_columns = features_to_use
+    dates = []
 
-    date_input = st.date_input("Date")
-    for col in manual_input_columns:
-        input_data[col] = st.number_input(f'{col}', value=0.0)
+    for i in range(window_size):
+        st.subheader(f"Day {i+1}")
+        date_input = st.date_input(f"Date for Day {i+1}", datetime.date.today() - datetime.timedelta(days=window_size-1-i))
+        dates.append(date_input)
+        for col in manual_input_columns:
+            input_data[f'{col}_{i+1}'] = st.number_input(f'{col} for Day {i+1}', value=0.0)
+
 
     if st.button('Predict'):
         try:
             # Create a DataFrame from manual input
-            manual_input_df = pd.DataFrame([input_data], index=[pd.to_datetime(date_input)])
+            manual_input_df = pd.DataFrame(index=pd.to_datetime(dates), columns=manual_input_columns)
+            for i in range(window_size):
+                for col in manual_input_columns:
+                    manual_input_df.loc[pd.to_datetime(dates[i]), col] = input_data[f'{col}_{i+1}']
 
             # Ensure data types are correct
             manual_input_df = manual_input_df.astype(float)
 
-            # We need a window of 20 days for prediction.
-            # Since the user only provides one day, we will use the last 19 days from the original data
-            # and the manually entered day as the 20th day.
-            window_size = 20
-            # Load the original data to get the last 19 days
-            df_original = pd.read_csv('/content/AAPL.csv')
-            df_original['Date'] = pd.to_datetime(df_original['Date'])
-            df_original.set_index('Date', inplace=True)
-
-            # Select only the required features from the original data
-            df_original_features = df_original[features_to_use]
-
-            # Get the last 19 days of the original data before the manual input date
-            last_19_days = df_original_features.loc[:date_input].tail(window_size - 1)
-
-            # Combine the last 19 days with the manual input day
-            combined_df = pd.concat([last_19_days, manual_input_df])
-
-            # Ensure the combined dataframe has the correct columns and order
-            combined_df = combined_df[features_to_use]
-
-
-            # Scale the combined data
-            combined_scaled = feature_scaler.transform(combined_df)
-            combined_scaled_df = pd.DataFrame(combined_scaled, columns=features_to_use, index=combined_df.index)
+            # Scale the manual input data
+            manual_input_scaled = feature_scaler.transform(manual_input_df)
+            manual_input_scaled_df = pd.DataFrame(manual_input_scaled, columns=manual_input_columns, index=manual_input_df.index)
 
             # Prepare data for prediction
-            X_predict_manual = np.array([combined_scaled_df.values]) # Reshape for the model
+            X_predict_manual = np.array([manual_input_scaled_df.values]) # Reshape for the model
 
             # Make predictions
             predicted_scaled_manual = multivariate_lstm.predict(X_predict_manual)
