@@ -78,35 +78,47 @@ if input_option == 'Upload CSV':
             st.error(f"An error occurred during processing: {e}")
 
 elif input_option == 'Manual Input':
-    st.write("Enter the stock data for the last 20 days:")
+    st.write("Enter the stock data for the day you want to predict:")
 
     input_data = {}
     columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-    dates = []
-    for i in range(20):
-        st.subheader(f"Day {i+1}")
-        date_input = st.date_input(f"Date for Day {i+1}", datetime.date.today() - datetime.timedelta(days=19-i))
-        dates.append(date_input)
-        for col in columns:
-            input_data[f'{col}_{i+1}'] = st.number_input(f'{col} for Day {i+1}', value=0.0)
+
+    date_input = st.date_input("Date")
+    for col in columns:
+        input_data[col] = st.number_input(f'{col}', value=0.0)
 
     if st.button('Predict'):
         try:
             # Create a DataFrame from manual input
-            manual_input_df = pd.DataFrame(index=pd.to_datetime(dates), columns=columns)
-            for i in range(20):
-                for col in columns:
-                    manual_input_df.loc[pd.to_datetime(dates[i]), col] = input_data[f'{col}_{i+1}']
+            manual_input_df = pd.DataFrame([input_data], index=[pd.to_datetime(date_input)])
 
             # Ensure data types are correct
             manual_input_df = manual_input_df.astype(float)
 
-            # Scale the manual input data
-            manual_input_scaled = feature_scaler.transform(manual_input_df)
-            manual_input_scaled_df = pd.DataFrame(manual_input_scaled, columns=columns, index=manual_input_df.index)
+            # We need a window of 20 days for prediction.
+            # Since the user only provides one day, we will use the last 19 days from the training data
+            # and the manually entered day as the 20th day.
+            window_size = 20
+            # Load the original training data to get the last 19 days
+            df_original = pd.read_csv('/content/AAPL.csv')
+            df_original['Date'] = pd.to_datetime(df_original['Date'])
+            df_original.set_index('Date', inplace=True)
+
+            # Get the last 19 days of the original data before the manual input date
+            last_19_days = df_original.loc[:date_input].tail(window_size - 1)
+
+            # Combine the last 19 days with the manual input day
+            combined_df = pd.concat([last_19_days, manual_input_df])
+
+            # Ensure the combined dataframe has the correct columns and order
+            combined_df = combined_df[['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']]
+
+            # Scale the combined data
+            combined_scaled = feature_scaler.transform(combined_df)
+            combined_scaled_df = pd.DataFrame(combined_scaled, columns=combined_df.columns, index=combined_df.index)
 
             # Prepare data for prediction
-            X_predict_manual = np.array([manual_input_scaled_df.values]) # Reshape for the model
+            X_predict_manual = np.array([combined_scaled_df.values]) # Reshape for the model
 
             # Make predictions
             predicted_scaled_manual = multivariate_lstm.predict(X_predict_manual)
@@ -115,7 +127,6 @@ elif input_option == 'Manual Input':
             dummy_array_manual = np.zeros((predicted_scaled_manual.shape[0], 2))
             dummy_array_manual[:, 1] = predicted_scaled_manual[:, 1]
             predicted_actual_manual = target_scaler.inverse_transform(dummy_array_manual)[:, 1]
-
 
             st.write("Predicted Closing Price for the next day:")
             st.write(predicted_actual_manual[0])
