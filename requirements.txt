@@ -1,11 +1,7 @@
 streamlit
-joblib
 pandas
+joblib
 numpy
 tensorflow
-keras
-matplotlib
-seaborn
 plotly
-statsmodels
-sklearn
+scikit-learn
